@@ -1,0 +1,16 @@
+{
+  "name": "user-setup",
+  "version": "0.0.1",
+  "description": "Create users and group during first-time setup",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/project-abigail/user-setup.git"
+  },
+  "author": "Russ Nicoletti",
+  "license": "MPL-2.0",
+  "bugs": {
+    "url": "https://github.com/project-abigail/user-setup/issues"
+  },
+  "homepage": "https://github.com/project-abigail/user-setup#readme",
+}
