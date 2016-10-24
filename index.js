@@ -1,6 +1,7 @@
 var https = require('https');
 var readline = require('readline'),
     rl = readline.createInterface(process.stdin, process.stdout);
+const fs = require('fs');
 
 var state = 'AdminUser';
 rl.setPrompt('Admin user: ');
@@ -153,6 +154,8 @@ function persistData(admin,
                         var addUserToGroupPromises = users.map(handleAddUserToGroup);
                         Promise.all(addUserToGroupPromises).then(results => {
                             console.log('Users successfully added to group');
+                            persistToken(token);
+                            console.log('Web token successfully persisted to file');
                             resolve();
                         }).catch(error => {
                             console.log('Error adding users to group', error);
@@ -207,3 +210,9 @@ function request(cmd, path, headers, postData) {
         req.end();
     });
 }
+
+function persistToken(token) {
+    var data = '{\n    "passphrase": "Shuddh Desi Romance",\n    "evernote": {\n        "authtoken": ' + token + '\n    }\n}\n';
+    fs.writeFileSync('secret.json', data);
+}
+
