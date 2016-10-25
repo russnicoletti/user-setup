@@ -212,7 +212,7 @@ function request(cmd, path, headers, postData) {
 }
 
 function persistToken(token) {
-    var data = '{\n    "passphrase": "Shuddh Desi Romance",\n    "evernote": {\n        "authtoken": ' + token + '\n    }\n}\n';
+    var data = '{\n    "passphrase": "Shuddh Desi Romance",\n    "evernote": {\n        "authtoken": ' + '"' + token + '"' + '\n    }\n}\n';
     fs.writeFileSync('secret.json', data);
 }
 
