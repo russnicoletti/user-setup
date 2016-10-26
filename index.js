@@ -1,11 +1,15 @@
-var https = require('https');
+var request = require('request');
 var readline = require('readline'),
     rl = readline.createInterface(process.stdin, process.stdout);
 const fs = require('fs');
 
-var state = 'AdminUser';
-rl.setPrompt('Admin user: ');
-rl.prompt();
+var baseUrl = 'https://calendar.knilxof.org/api/v2';
+var loginRequest = request.defaults({
+    url: baseUrl + '/login',
+    json: true
+}), createUserRequest,
+    createGroupRequest,
+    addToGroupRequest;
 
 var admin = {};
 var groupName;
@@ -13,10 +17,20 @@ var userforename,
     userphone,
     userpassword;
 var users = [];
+var masterPassword;
+var state = 'MasterPassword';
+rl.setPrompt('Master password: ');
+rl.prompt();
 
 rl.on('line', function(line) {
     var userText = line.trim();
     switch(state) {
+        case 'MasterPassword':
+            masterPassword = userText;
+            state = 'AdminUser';
+            rl.setPrompt('Admin user: ');
+            rl.prompt();
+            break;
         case 'AdminUser':
             admin.forename = userText;
             state = 'AdminPhone';
@@ -52,7 +66,9 @@ rl.on('line', function(line) {
                 console.log('users:', users);
                 rl.setPrompt('');
 
-                persistData(admin, users, groupName).then(() => {
+                toServer(admin, users, groupName).then((token) => {
+                    persistToken(token);
+                    console.log('Web token successfully persisted');
                     console.log('Have a nice day!');
                     process.exit(0);
                 }).catch(() => {
@@ -67,7 +83,7 @@ rl.on('line', function(line) {
             rl.setPrompt('Phone number: ');
             rl.prompt();
             break;
-   
+
         case 'Phone':
             userphone = userText;
             username = userphone;
@@ -75,7 +91,7 @@ rl.on('line', function(line) {
             rl.setPrompt('Password: ');
             rl.prompt();
             break;
- 
+
         case 'Password':
             userpassword = userText;
             users.push({forename: userforename,
@@ -93,122 +109,151 @@ rl.on('line', function(line) {
     console.log('Have a great day!');
     process.exit(0);
 });
+ 
+function toServer(admin, users, groupName) {
+    return new Promise((resolve, reject) => {
+        console.log('Logging in master user......');
+        login({ username: 'master', password: masterPassword }).then(result => {
+            var masterToken = result.token;
 
-function persistData(admin,
-                     users,
-                     groupName) {
-    return new Promise((resolve, reject) => { 
-        // Create admin user 
-        console.log('Creating admin user', admin.forename + '......');
-        var jsonData = JSON.stringify(admin);
-        request('POST', '/users', {'Content-Type': 'application/json',
-                           'Content-Length': jsonData.length}, jsonData).then(result => {
-            console.log('Admin user created with username:', result.username, 'id:', result.id);
-            var postData = {
-                username: admin.username,
-                password: admin.password
-            };
-        
-            // Login admin user
-            postData = JSON.stringify(postData);
-            console.log('Logging in admin user......');
-            request('POST', '/login', {'Content-Type': 'application/json',
-                                       'Content-Length': postData.length}, postData).then(result => {
-                console.log('Webtoken from login:', result.token);
-                var token = result.token;
-        
-                // Create group (admin user will be autmatically added to group)
-                var groupData = {
-                    name: groupName
-                };
-                console.log('Creating group ' + groupData.name + '.......');
-                jsonData = JSON.stringify(groupData);
-                request('POST', '/groups', {'Content-Type': 'application/json',
-                                    'Content-Length': jsonData.length,
-                                    'Authorization': 'Bearer ' + token}, jsonData).then(result => {
-                    var groupId = result.id;
-                    console.log('group created, id:', groupId);
-        
-                    function handleCreateUser(user) {
-                        // Create users
-                        var postData = JSON.stringify(user);
-                        console.log('Creating user ' + user.forename + '......');
-                        return request('POST', '/users', {'Content-Type': 'application/json',
-                                                          'Content-Length': postData.length}, postData);
-                    }
-                    console.log('Creating users......');
-                    var createUserPromises = users.map(handleCreateUser);
-                    var userIdMap = new Map();
-                    Promise.all(createUserPromises).then(results => {
-                        results.forEach(result => {
-                            userIdMap.set(result.username, result.id);
-                            console.log('User created with username:', result.username, 'id:', result.id);
-                        });
+            createUserRequest = request.defaults({
+                url: baseUrl + '/users',
+                json: true,
+                headers: {'Authorization': 'Bearer ' + masterToken}
+            });
 
-                        function handleAddUserToGroup(user) {
-                            console.log('Adding user (' + user.forename + ') to group ' + groupData.name + '......');
-                            return request('PUT', '/groups/' + groupId + '/members/' + userIdMap.get(user.phoneNumber),
-                                {'Authorization': 'Bearer ' + token});
-                        }
-                        console.log('Adding users to group......');
-                        var addUserToGroupPromises = users.map(handleAddUserToGroup);
-                        Promise.all(addUserToGroupPromises).then(results => {
-                            console.log('Users successfully added to group');
-                            persistToken(token);
-                            console.log('Web token successfully persisted to file');
-                            resolve();
+            console.log('Creating admin user', admin.forename, '......');
+            createUser(admin).then(result => {
+                console.log('Admin user created with username:', result.username, 'id:', result.id);
+
+                console.log('Logging in admin user......');
+                login(admin).then(result => {
+                    token = result.token;
+
+                    createGroupRequest = request.defaults({
+                        url: baseUrl + '/groups',
+                        json: true,
+                        headers: {'Authorization': 'Bearer ' + token}
+                    });
+
+                    addToGroupRequest = request.defaults({
+                        baseUrl: baseUrl + '/groups',
+                        json: true,
+                        headers: {'Authorization': 'Bearer ' + token}
+                    });
+
+                    createGroup(groupName).then(result => {
+                        var groupId = result.id;
+                        console.log('group created, id:', groupId);
+
+                        console.log('Creating users......');
+                        var createUserPromises = users.map(createUser);
+                        var userIdMap = new Map();
+                        Promise.all(createUserPromises).then(results => {
+                            results.forEach(result => {
+                                userIdMap.set(result.username, result.id);
+                                console.log('User created with username:', result.username, 'id:', result.id);
+                            });
+
+                            function handleAddUserToGroup(user) {
+                                console.log('Adding user (' + user.forename + ') to group ' + groupName + '......');
+                                return addToGroup(groupId, userIdMap.get(user.phoneNumber));
+                            }
+
+                            console.log('Adding users to group......');
+                            var addUserToGroupPromises = users.map(handleAddUserToGroup);
+                            Promise.all(addUserToGroupPromises).then(() => {
+                                console.log('Users successfully added to group');
+                                resolve(token);
+                            }).catch(error => {
+                                console.log('Error adding users to group', error);
+                                reject();
+                            });
                         }).catch(error => {
-                            console.log('Error adding users to group', error);
+                            console.log('Error creating user:', error);
                             reject();
                         });
                     }).catch(error => {
-                        console.log('Error creating user:', error);
+                        console.log('Error creating group ' + groupName + ':', error);
                         reject();
                     });
                 }).catch(error => {
-                    console.log('Error creating group ' + groupData.name + ':', error);
+                    console.log('Error logging in admin user (' + admin.username + '):', error);
                     reject();
                 });
             }).catch(error => {
-                console.log('Error logging in admin user (' + admin.username + '):', error);
+                console.log('Error creating admin user (' + admin.username + '):', error);
                 reject();
             });
         }).catch(error => {
-            console.log('Error creating admin user (' + admin.username + '):', error);
+            console.log('Error logging in master user', error);
             reject();
         });
     });
 }
 
-function request(cmd, path, headers, postData) {
-    console.log('request, cmd:', cmd, ', path:', path);
-    var options = {
-        host: 'calendar.knilxof.org',
-        path: '/api/v2' + path,
-        port: '443',
-        headers: headers,
-        method: cmd
-    };
-
-    console.log('Creating \'request\' promise for', path, '...');
+function login(user) {
     return new Promise(function(resolve, reject) {
-        var req = https.request(options, (res) => {
-            if (res.statusCode !== 200 && res.statusCode !== 201 && res.statusCode !== 204) {
-                reject('request failed: ' + res);
+        loginRequest.post(
+            {
+              body: user
             }
-            var result;
-            res.setEncoding('utf8');
-            res.on('data', (data) => {
-                result = JSON.parse(data); });
-            res.on('end', () => {
-                resolve(result);
-            });
+        ).on('response', function(response) {
+            onResponse(response, resolve, reject)
         });
-        if (postData) {
-            req.write(postData);
-        }
-        req.end();
     });
+}
+
+function createUser(user) {
+    console.log('Creating user ' + user.forename + '......');
+    return new Promise(function(resolve, reject) {
+        createUserRequest.post(
+            { 
+              body: user,
+            }
+        ).on('response', function(response) {
+            onResponse(response, resolve, reject)
+        });
+    });
+}
+
+function createGroup(groupName) {
+    console.log('Creating group ' + groupName, '.......');
+    return new Promise(function(resolve, reject) {
+        createGroupRequest.post(
+            {
+              body: {name: groupName},
+            }
+        ).on('response', function(response) {
+            onResponse(response, resolve, reject)
+        });
+    });
+}
+
+function addToGroup(groupId, userId) {
+    return new Promise(function(resolve, reject) {
+        addToGroupRequest.put(
+            {
+              url: groupId + '/members/' + userId
+            }
+        ).on('response', function(response) {
+            onResponse(response, resolve, reject)
+        });
+    });
+}
+
+function onResponse(response, resolve, reject) {
+        var result = {statusCode: response.statusCode};
+
+        response.on('data', function(data) {
+            result.serverData = JSON.parse(data);
+        }).on('end', function() {
+            if (result.statusCode < 300) {
+                resolve(result.serverData || null);
+            } else {
+                reject(result.serverData.message);
+            }
+        });
 }
 
 function persistToken(token) {
