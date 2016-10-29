@@ -258,6 +258,6 @@ function onResponse(response, resolve, reject) {
 
 function persistToken(token) {
     var data = '{\n    "passphrase": "Shuddh Desi Romance",\n    "evernote": {\n        "authtoken": ' + '"' + token + '"' + '\n    }\n}\n';
-    fs.writeFileSync('secret.json', data);
+    fs.writeFileSync(__dirname + '/secret.json', data);
 }
 
