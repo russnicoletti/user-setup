@@ -13,4 +13,7 @@
     "url": "https://github.com/project-abigail/user-setup/issues"
   },
   "homepage": "https://github.com/project-abigail/user-setup#readme",
+  "dependencies": {
+    "request": "^2.76.0"
+  }
 }
