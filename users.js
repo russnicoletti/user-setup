@@ -15,7 +15,8 @@ var loginRequest = request.defaults({
     url: baseUrl + '/login',
     json: true
 }), createUserRequest,
-    deleteUserRequest;
+    deleteUserRequest,
+    getUserRemindersRequest;
 var masterPassword;
 var adminUserName;
 var adminPassword;
@@ -24,6 +25,7 @@ var userName;
 var userPassword;
 var phone;
 var userId;
+var groupId;
 
 var createUserStates = [
     { state: '', prompt: 'Master password'},
@@ -35,26 +37,60 @@ var createUserStates = [
 ];
 
 var deleteUserStates = [
-    { state: '', prompt: 'Username' },
-    { state: 'UserName', prompt: 'Forename' },
-    { state: 'Forename', prompt: 'Phone number' },
+    { state: '', prompt: 'Phone number' },
     { state: 'PhoneNumber', prompt: 'Password' },
     { state: 'UserPassword', prompt: 'User Id' },
     { state: 'UserId', prompt: ''}
 ];
 
-var activeStates;
-switch (mode) {
-    case 'add-user':
-      activeStates = createUserStates;
-      break;
-    case 'delete-user':
-      activeStates = deleteUserStates;
-      break;
-    default:
-      console.log(mode, 'is not a supported mode');
-      process.exit(-1);
-      break;
+var addUserToGroupStates = [
+    { state: '', prompt: 'AdminUsername' },
+    { state: 'AdminUserName', prompt: 'AdminPassword' },
+    { state: 'AdminPassword', prompt: 'User Id' },
+    { state: 'UserId', prompt: 'Group Id'},
+    { state: 'GroupId', prompt: ''}
+];
+
+var deleteGroupStates = [
+    { state: '', prompt: 'AdminUsername' },
+    { state: 'AdminUserName', prompt: 'AdminPassword' },
+    { state: 'AdminPassword', prompt: 'Group Id' },
+    { state: 'GroupId', prompt: ''}
+];
+
+var getUserRemindersStates = [
+    { state: '', prompt: 'Username' },
+    { state: 'UserName', prompt: 'Password' },
+    { state: 'UserPassword', prompt: '' },
+];
+
+// The states for creating a user and adding them to a group are the combination
+// of the states for creating a user and for adding a user to a group, except that
+// the 'userId' state is not used here since the userId is generated during the flow.
+var createUserAddToGroupStates = [
+    { state: '', prompt: 'Master password'},
+    { state: 'MasterPassword', prompt: 'Username' },
+    { state: 'UserName', prompt: 'Forename' },
+    { state: 'Forename', prompt: 'Phone number' },
+    { state: 'PhoneNumber', prompt: 'Password' },
+    { state: 'UserPassword', prompt: 'AdminUsername' },
+    { state: 'AdminUserName', prompt: 'AdminPassword' },
+    { state: 'AdminPassword', prompt: 'Group Id' },
+    { state: 'GroupId', prompt: ''}
+];
+
+var kvArray = [['create-user', createUserStates],
+               ['delete-user', deleteUserStates],
+               ['delete-group', deleteGroupStates],
+               ['add-user-to-group', addUserToGroupStates],
+               ['create-user-add-to-group', createUserAddToGroupStates],
+               ['get-user-reminders', getUserRemindersStates]];
+
+var statesMap = new Map(kvArray);
+var activeStates = statesMap.get(mode);
+if (!activeStates) {
+    console.log(mode, 'is not a supported mode');
+    process.exit(-1);
 }
 
 var stateObj = activeStates.shift();
@@ -80,8 +116,17 @@ rl.on('line', function(line) {
         case 'UserPassword':
             userPassword = userText;
             break;
+        case 'AdminUserName':
+            adminUserName = userText;
+            break;
+        case 'AdminPassword':
+            adminPassword = userText;
+            break;
         case 'UserId':
             userId = userText;
+            break;
+        case 'GroupId':
+            groupId = userText;
             break;
     }
     if (stateObj.prompt) {
@@ -108,11 +153,10 @@ function toServer() {
     return new Promise((resolve, reject) => {
 
         switch (mode) {
-            case 'add-user': 
-                console.log('Logging in master user......');
+            case 'create-user': 
                 login({ username: 'master', password: masterPassword }).then(result => {
                     var masterToken = result.token;
-                    console.log('Master user token:', masterToken);
+                    console.log('Master user token:' + masterToken);
 
                     createUserRequest = request.defaults({
                         url: baseUrl + '/users',
@@ -126,21 +170,19 @@ function toServer() {
                     }).catch(error => {
                         console.log('Error creating user:', error);
                     }); 
+                }).catch(error => {
+                    console.log('Error logging in master user:', error);
                 });
                 break;
 
             case 'delete-user':
-                var user = { username: userName, forename: foreName, phoneNumber: phone, password: userPassword};
-                console.log('Logging in user:', JSON.stringify(user), '......');
+                var user = { username: phone, password: userPassword};
                 login(user).then(result => {
                     var token = result.token;
-                    console.log('token for', user.username, ':', token);
-
-                    var url = baseUrl + '/users/' + userId;
-                    console.log('deleteUserRequest url:', url);
+                    console.log('Token for', user.username + ':', token);
 
                     deleteUserRequest = request.defaults({
-                        url: url,
+                        url: baseUrl + '/users/' + userId,
                         json: true,
                         headers: {'Authorization': 'Bearer ' + token}
                     });
@@ -151,6 +193,111 @@ function toServer() {
                     }).catch(error => {
                         console.log('Error deleting user:', error);
                     }); 
+                }).catch(error => {
+                    console.log('Error logging in user:', error);
+                });
+                break;
+
+            case 'delete-group':
+                var user = { username: adminUserName, password: adminPassword};
+                login(user).then(result => {
+                    var token = result.token;
+                    console.log('Token for', user.username + ':', token);
+
+                    deleteGroupRequest = request.defaults({
+                        url: baseUrl + '/groups/' + groupId,
+                        json: true,
+                        headers: {'Authorization': 'Bearer ' + token}
+                    });
+
+                    deleteGroup(groupId).then(() => {
+                        console.log('Deleted group with id:');
+                        resolve(groupId);
+                    }).catch(error => {
+                        console.log('Error deleting user:', error);
+                    }); 
+                }).catch(error => {
+                    console.log('Error logging in user:', error);
+                });
+                break;
+            case 'add-user-to-group':
+                var admin = { username: adminUserName, password: adminPassword};
+                login(admin).then(result => {
+                    var token = result.token;
+                    console.log('Token for', admin.username + ':', token);
+
+                    addToGroupRequest = request.defaults({
+                        baseUrl: baseUrl + '/groups',
+                        json: true,
+                        headers: {'Authorization': 'Bearer ' + token}
+                    });
+                    addToGroup(groupId, userId).then(() => {
+                        resolve('user (' + userId + ') added to group ' + groupId); 
+                    }).catch(error => {
+                        console.log('Error adding user to group:', error);
+                    }); 
+                }).catch(error => {
+                    console.log('Error logging in admin user:', error);
+                });
+                break;
+            case 'get-user-reminders':
+                var user = { username: userName, password: userPassword};
+                login(user).then(result => {
+                    var token = result.token;
+                    console.log('Token for', user.username + ':', token);
+
+                    getUserRemindersRequest = request.defaults({
+                        baseUrl: baseUrl + '/reminders',
+                        json: true,
+                        headers: {'Authorization': 'Bearer ' + token}
+                    });
+                    getUserReminders().then((result) => {
+                        console.log(result);
+                    }).catch(error => {
+                        console.log('Error getting reminders:', error);
+                    }); 
+                }).catch(error => {
+                    console.log('Error logging in admin user:', error);
+                });
+                break;
+            case 'create-user-add-to-group':
+                login({ username: 'master', password: masterPassword }).then(result => {
+                    var masterToken = result.token;
+                    console.log('Master user token:' + masterToken);
+
+                    createUserRequest = request.defaults({
+                        url: baseUrl + '/users',
+                        json: true,
+                        headers: {'Authorization': 'Bearer ' + masterToken}
+                    });
+                    var user = {username: phone, forename: foreName, phoneNumber: phone, password: userPassword};
+                    createUser(user).then((result) => {
+                        var userId = result.id;
+                        console.log('User created, id:', userId);
+                
+                        var admin = { username: adminUserName, password: adminPassword};
+                        login(admin).then(result => {
+                            var token = result.token;
+                            console.log('Token for', admin.username + ':', token);
+
+                            addToGroupRequest = request.defaults({
+                                baseUrl: baseUrl + '/groups',
+                                json: true,
+                                headers: {'Authorization': 'Bearer ' + token}
+                            });
+                            addToGroup(groupId, userId).then(() => {
+                                resolve('user (' + userId + ') added to group ' + groupId); 
+                            }).catch(error => {
+                                console.log('Error adding user to group:', error);
+                            }); 
+                        }).catch(error => {
+                            console.log('Error logging in admin user:', error);
+                        });
+                    }).catch(error => {
+                        console.log('Error creating user:', error);
+                    }); 
+                }).catch(error => {
+                    console.log('Error logging in master user:', error);
                 });
                 break;
         }
@@ -159,6 +306,7 @@ function toServer() {
 
 function login(user) {
     return new Promise(function(resolve, reject) {
+        console.log('Logging in user:', JSON.stringify(user), '......');
         loginRequest.post(
             {
               body: user
@@ -183,10 +331,8 @@ function createUser(user) {
 }
 
 function deleteUser(user) {
-    console.log('Deleting user ' + user.forename + '......');
-    var user = { username: user.username,
-                 forename: user.forename,
-                 phoneNumber: user.phoneNumber,
+    console.log('Deleting user ' + user.username + '......');
+    var user = { username: user.phoneNumber,
                  currentPassword: userPassword
     };
     console.log('user information for user being deleted:', JSON.stringify(user));
@@ -195,6 +341,17 @@ function deleteUser(user) {
             {
               body: user
             }
+        ).on('response', function(response) {
+            onResponse(response, resolve, reject)
+        });
+    });
+}
+
+function deleteGroup(groupId) {
+    console.log('Deleting group', groupId + '......');
+    return new Promise(function(resolve, reject) {
+        deleteGroupRequest.delete(
+            {}
         ).on('response', function(response) {
             onResponse(response, resolve, reject)
         });
@@ -216,17 +373,17 @@ function addToGroup(groupId, userId) {
 }
 
 function onResponse(response, resolve, reject) {
-        var result = {statusCode: response.statusCode};
+    var result = {statusCode: response.statusCode};
 
-        response.on('data', function(data) {
-            result.serverData = JSON.parse(data);
-        }).on('end', function() {
-            console.log('statusCode:', result.statusCode);
-            if (result.statusCode < 300) {
-                resolve(result.serverData || null);
-            } else {
-                reject(result.serverData.message);
-            }
-        });
+    response.on('data', function(data) {
+        result.serverData = JSON.parse(data);
+    }).on('end', function() {
+        console.log('statusCode:', result.statusCode);
+        if (result.statusCode < 300) {
+            resolve(result.serverData || null);
+        } else {
+            reject(result.serverData.message);
+        }
+    });
 }
 
