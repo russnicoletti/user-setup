@@ -3,30 +3,6 @@ var readline = require('readline'),
     rl = readline.createInterface(process.stdin, process.stdout);
 const fs = require('fs');
 
-if (process.argv.length != 3) {
-    console.log('one argument must be supplied');
-    process.exit(-1);
-}
-
-var mode = process.argv[2];
-
-var baseUrl = 'https://calendar.knilxof.org/api/v2';
-var loginRequest = request.defaults({
-    url: baseUrl + '/login',
-    json: true
-}), createUserRequest,
-    deleteUserRequest,
-    getUserRemindersRequest;
-var masterPassword;
-var adminUserName;
-var adminPassword;
-var foreName;
-var userName;
-var userPassword;
-var phone;
-var userId;
-var groupId;
-
 var createUserStates = [
     { state: '', prompt: 'Master password'},
     { state: 'MasterPassword', prompt: 'Username' },
@@ -79,19 +55,53 @@ var createUserAddToGroupStates = [
     { state: 'GroupId', prompt: ''}
 ];
 
-var kvArray = [['create-user', createUserStates],
+var modeStateArray = [
+               ['create-user', createUserStates],
                ['delete-user', deleteUserStates],
                ['delete-group', deleteGroupStates],
                ['add-user-to-group', addUserToGroupStates],
                ['create-user-add-to-group', createUserAddToGroupStates],
-               ['get-user-reminders', getUserRemindersStates]];
+               ['get-user-reminders', getUserRemindersStates]
+];
 
-var statesMap = new Map(kvArray);
-var activeStates = statesMap.get(mode);
-if (!activeStates) {
-    console.log(mode, 'is not a supported mode');
+if (process.argv.length != 3) {
+    console.log('One of the follwoing must be supplied:');
+    modeStateArray.forEach(item => {
+        console.log(item[0]);
+    });
+
     process.exit(-1);
 }
+
+var statesMap = new Map(modeStateArray);
+var mode = process.argv[2];
+var activeStates = statesMap.get(mode);
+if (!activeStates) {
+    console.log('One of the follwoing must be supplied:');
+    modeStateArray.forEach(item => {
+        console.log(item[0]);
+    });
+
+    process.exit(-1);
+}
+
+
+var baseUrl = 'https://calendar.knilxof.org/api/v2';
+var loginRequest = request.defaults({
+    url: baseUrl + '/login',
+    json: true
+}), createUserRequest,
+    deleteUserRequest,
+    getUserRemindersRequest;
+var masterPassword;
+var adminUserName;
+var adminPassword;
+var foreName;
+var userName;
+var userPassword;
+var phone;
+var userId;
+var groupId;
 
 var stateObj = activeStates.shift();
 prompt(stateObj.prompt);
