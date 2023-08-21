@@ -7,7 +7,7 @@ First Time Setup
 ----------------
 This module is used to create the group and the users for a family using project Abigail's product to create lists and reminders. This module is used in conjunction with project Abigail's [Wifi Setup](https://github.com/project-abigail/wifi-setup). The first-time setup process is:
  * The wifi setup process is initiated when the Raspberry Pi device starts up.
- * This module is manually invoked when the wifi setup access point appears in the list of wifi networks (which will happend after the wifi setup module determines there is no wifi connection).
+ * This module is manually invoked when the wifi setup access point appears in the list of wifi networks (which will happen after the wifi setup module determines there is no wifi connection).
  * This module prompts for the following information
    * Admin user (username, phone number, password)
    * Group name
