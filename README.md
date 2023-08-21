@@ -21,3 +21,7 @@ For each device being setup, the `secret.json` file needs to be copied to the Ra
    * `scp secret.json pi@raspberrypi.local:~/abigail-device`
 
 To copy the file, we take advantage of the access point created by the wifi-setup module (in order to avoid the complication of connecting the laptop, on which the user-setup process has run, to the home network). Therefore, the `secret.json` file should be copied after the wifi-setup access point has been created and before using the wifi-setup page to connect the Raspberry Pi to the home network.
+
+Developer Notes
+---------------
+It is the intention that the code in `users.js` replace `index.js`
